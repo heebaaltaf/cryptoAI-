@@ -1,0 +1,18 @@
+
+uvicorn
+python-dotenv
+
+fastapi>=0.100.0
+pydantic==2.10.1
+pydantic-core==2.27.1
+boto3
+openai
+pandas
+requests
+binance
+python-binance
+# scikit-learn
+ta
+numpy
+jinja2
+
