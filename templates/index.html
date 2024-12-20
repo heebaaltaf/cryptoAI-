@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto AI</title>
+    <!-- Link to the CSS file in the static folder -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Crypto AI</h1>
+        <p>Bitcoin 24 HOUR analysis!</p>
+    </header>
+    <main>
+        <!-- Characters with Speech Bubbles -->
+        <div id="characters-container">
+            <div class="character-wrapper">
+                <img id="catnap" class="character" src="/static/images/crypto.webp" alt="bitcoin">
+            </div>
+            <div class="character-wrapper">
+                <img id="funbot" class="character" src="/static/images/dall1.webp" alt="FunBot">
+            </div>
+            <div class="character-wrapper">
+                <img id="clukr" class="character" src="/static/images/dall4.webp" alt="Clukr">
+            </div>
+            <div class="character-wrapper">
+                <img id="clukr" class="character" src="/static/images/dall2.webp" alt="Clukr">
+            </div>
+            <div class="character-wrapper">
+                <img id="raddy" class="character" src="/static/images/dall5.webp" alt="Raddy">
+            </div>
+        </div>
+
+        <!-- Buttons -->
+        <div id="button-container">
+            <button id="start-recognition">🎤 Begin the Conversation</button>
+            <div class="dropdown">
+                <button id="crypto-dropdown-button">Select Cryptocurrency</button>
+                <div id="crypto-dropdown-menu" class="dropdown-menu">
+                    <!-- Cryptocurrency list will be populated here -->
+                </div>
+            </div>
+            <button id="end-class">⏹ End Conversation</button>
+        </div>
+
+        <!-- Output Area -->
+        <div id="output">Let's start trading!</div>
+    </main>
+    <footer>
+        <p>Made with ❤️ by DroFn's Team</p>
+    </footer>
+    
+    <script src="/static/js/dynamic-listening.js" defer></script>
+</body>
+</html>
