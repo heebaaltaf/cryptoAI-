@@ -32,16 +32,36 @@
             </div>
         </div>
 
-        <!-- Buttons -->
+   
+
+
+
         <div id="button-container">
-            <button id="start-recognition">🎤 Begin the Conversation</button>
+            
             <div class="dropdown">
                 <button id="crypto-dropdown-button">Select Cryptocurrency</button>
                 <div id="crypto-dropdown-menu" class="dropdown-menu">
+                    <input 
+                        type="text" 
+                        id="crypto-search-input" 
+                        placeholder="Search Cryptocurrency..." 
+                        class="dropdown-search" 
+                    />
                     <!-- Cryptocurrency list will be populated here -->
                 </div>
             </div>
+            <button id="start-recognition">🎤 Begin the Conversation</button>
+            
             <button id="end-class">⏹ End Conversation</button>
+
+        </div>
+        <!-- Analysis and Recommendation Button -->
+        <button id="analysis-button">📊 Analysis and Recommendation</button>
+
+        <!-- Analysis and Recommendation Box -->
+        <div id="analysis-response-container" class="analysis-box">
+            <h3>Analysis and Recommendation</h3>
+            <div id="analysis-response"></div>
         </div>
 
         <!-- Output Area -->
