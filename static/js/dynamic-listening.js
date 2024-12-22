@@ -5,10 +5,15 @@ const startButton = document.getElementById('start-recognition');
 // const endButton = document.getElementById('end-class');
 const speechBubble = document.getElementById("speech-bubble");
 
+const cryptoDropdownButton = document.getElementById("crypto-dropdown-button");
+const dropdownMenu = document.getElementById("crypto-dropdown-menu");
+
 const API_BASE_URL =
-    window.location.hostname === "localhost"
-        ? "http://127.0.0.1:8000" // Local API URL
-        : "https://crypto-ai-pi.vercel.app"; // Production API URL
+window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
+    ? "http://127.0.0.1:8000" // Local API URL
+    : "https://crypto-ai-pi.vercel.app"; // Production API URL        
+console.log("Resetting inactivity timeout...",API_BASE_URL)
+
 
 let recognition;
 let isListening = false;
@@ -27,6 +32,36 @@ const inactivityStages = [
     { delay: 25000, message: "If you need help with crypto analysis, just ask!" }
 ];
 
+
+
+let selectedCrypto = ""; // Initially empty to ensure selection
+let cryptoLocked = false; // Indicates if the crypto selection is locked
+
+// Disable Cryptocurrency Selection
+function lockCryptoSelection() {
+    cryptoDropdownButton.disabled = true;
+    cryptoDropdownButton.style.cursor = "not-allowed";
+    cryptoDropdownButton.textContent = `Selected: ${selectedCrypto}`; // Show the locked crypto
+    console.log("Cryptocurrency selection locked.");
+}
+
+// Enable Cryptocurrency Selection
+function unlockCryptoSelection() {
+    cryptoDropdownButton.disabled = false;
+    cryptoDropdownButton.style.cursor = "pointer";
+    cryptoDropdownButton.textContent = "Select Cryptocurrency"; // Reset to the default label
+    console.log("Cryptocurrency selection unlocked.");
+    selectedCrypto = ""; // Reset the selected cryptocurrency
+}
+
+function resetInactivityTimeout() {
+    console.log("Resetting inactivity timeout...");
+    clearTimeout(inactivityTimer); // Clear any existing timer
+    inactivityTimer = setTimeout(() => {
+        console.log("Inactivity detected.");
+        handleInactivity(); // Trigger inactivity handling
+    }, 30000); // Set the desired timeout (e.g., 30 seconds)
+}
 
 // Start Continuous Interaction
 function startContinuousInteraction() {
@@ -49,7 +84,8 @@ function startContinuousInteraction() {
     }, 30 * 60 * 1000); // 30 minutes
 
     // Start the inactivity timeout
-    resetInactivityTimeout();
+    // resetInactivityTimeout();
+    resetInactivityTimer(); // Start the inactivity timer   
 }
 
 // Restart the Class
@@ -162,6 +198,7 @@ function stopPollyAudio() {
 
 
 
+
 let currentPollyRequest = null; // Track the current Polly request to avoid overlaps
 
 function playPollyResponse(text) {
@@ -258,7 +295,7 @@ function initSpeechRecognition() {
         fetch(API_BASE_URL + "/chat", {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: 'default', message: userSpeech }),
+            body: JSON.stringify({ user_id: 'default', message: userSpeech, crypto: selectedCrypto }),
         })
             .then(response => response.json())
             .then(data => {
@@ -271,39 +308,7 @@ function initSpeechRecognition() {
             });
     };
     
-    // recognition.onerror = (event) => {
-    //     console.error("Speech recognition error:", event.error);
-
-    //     if (event.error === 'no-speech') {
-    //         console.log("No speech detected.");
-    //         outputDiv.textContent = "Wait for the response!";
-    //     }
-
-    //     if (isListening) {
-    //         recognition.start(); // Immediately restart recognition
-    //     }
-    // };
-
-
-    // let inactivityTimer; // Global timer to track inactivity
-
-    // recognition.onerror = (event) => {
-    //     console.error("Speech recognition error:", event.error);
-
-    //     if (event.error === 'no-speech') {
-    //         if (!isSpeaking) {
-    //             console.log("No speech detected. Starting inactivity prompts...");
-    //             handleInactivity(); // Trigger inactivity prompts
-    //         }
-    //     }
-
-    //     if (isListening && !isSpeaking) {
-    //         console.log("Restarting recognition after no-speech error...");
-    //         setTimeout(() => recognition.start(), 500); // Restart quickly
-    //     }
-    // };
-
-    // let inactivityTimer; // Global timer to track inactivity
+  
 
     recognition.onerror = (event) => {
         console.error("Speech recognition error:", event.error);
@@ -342,10 +347,13 @@ function initSpeechRecognition() {
     recognition.onend = () => {
         if (isListening && !isSpeaking) {
             console.log("Restarting recognition...");
-            recognition.start(); // Restart recognition if Polly is not speaking
+            try {
+                recognition.start();
+            } catch (error) {
+                console.error("Failed to restart recognition:", error);
+            }
         }
     };
-
     recognition.start();
 }
 function streamTextWhileSpeaking(text) {
@@ -436,10 +444,255 @@ function handleInactivity() {
 
 
 
-// Attach event listeners to buttons
 
-startButton.addEventListener('click', startContinuousInteraction);
-// restartButton.addEventListener('click', restartClass);
+// document.addEventListener("DOMContentLoaded", () => {
+//     async function fetchCryptoPairs() {
+//         const url = "https://api.binance.com/api/v3/exchangeInfo";
+//         try {
+//             const response = await fetch(url);
+//             const data = await response.json();
+//             const symbols = data.symbols.map((symbol) => symbol.symbol);
+
+//             symbols.forEach((symbol) => {
+//                 const option = document.createElement("div");
+//                 option.textContent = symbol;
+//                 option.classList.add("dropdown-item");
+//                 option.addEventListener("click", () => {
+//                     if (!cryptoLocked) {
+//                         selectedCrypto = symbol;
+//                         console.log(`Selected cryptocurrency: ${selectedCrypto}`);
+//                         cryptoDropdownButton.textContent = symbol; // Update button text
+//                         dropdownMenu.style.display = "none"; // Hide dropdown
+//                     } else {
+//                         console.warn("Cryptocurrency selection is locked.");
+//                     }
+//                 });
+//                 dropdownMenu.appendChild(option);
+//             });
+//         } catch (error) {
+//             console.error("Error fetching cryptocurrency pairs:", error);
+//         }
+//     }
+
+//     fetchCryptoPairs();
+
+//     // Toggle dropdown visibility
+//     cryptoDropdownButton.addEventListener("click", () => {
+//         if (!cryptoLocked) {
+//             dropdownMenu.style.display = dropdownMenu.style.display === "block" ? "none" : "block";
+//         } else {
+//             console.warn("Cryptocurrency selection is locked.");
+//         }
+//     });
+
+//     // Close dropdown when clicking outside
+//     document.addEventListener("click", (event) => {
+//         if (!cryptoDropdownButton.contains(event.target) && !dropdownMenu.contains(event.target)) {
+//             dropdownMenu.style.display = "none";
+//         }
+//     });
+// });
+
+document.addEventListener("DOMContentLoaded", () => {
+    const dropdownMenu = document.getElementById("crypto-dropdown-menu");
+    const searchInput = document.createElement("input");
+    const cryptoDropdownButton = document.getElementById("crypto-dropdown-button");
+    let allCryptos = []; // To store all cryptocurrency options for filtering
+
+    // Configure search input
+    searchInput.type = "text";
+    searchInput.id = "crypto-search-input";
+    searchInput.placeholder = "Search Cryptocurrency...";
+    searchInput.classList.add("dropdown-search");
+
+    async function fetchCryptoPairs() {
+        const url = "https://api.binance.com/api/v3/exchangeInfo";
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+            allCryptos = data.symbols.map((symbol) => symbol.symbol);
+
+            // Display all options initially
+            renderCryptoOptions(allCryptos);
+        } catch (error) {
+            console.error("Error fetching cryptocurrency pairs:", error);
+        }
+    }
+
+    // Render dropdown options based on provided list
+    function renderCryptoOptions(cryptoList) {
+        const currentSearchValue = searchInput.value; // Save current input value
+        dropdownMenu.innerHTML = ""; // Clear existing options
+        dropdownMenu.appendChild(searchInput); // Append search input
+
+        cryptoList.forEach((symbol) => {
+            const option = document.createElement("div");
+            option.textContent = symbol;
+            option.classList.add("dropdown-item");
+            option.addEventListener("click", () => {
+                if (!cryptoLocked) {
+                    selectedCrypto = symbol;
+                    console.log(`Selected cryptocurrency: ${selectedCrypto}`);
+                    cryptoDropdownButton.textContent = symbol; // Update button text
+                    dropdownMenu.style.display = "none"; // Hide dropdown
+                } else {
+                    console.warn("Cryptocurrency selection is locked.");
+                }
+            });
+            dropdownMenu.appendChild(option);
+        });
+
+        searchInput.value = currentSearchValue; // Restore input value
+        searchInput.focus(); // Refocus the input
+    }
+
+    // Attach search functionality
+    searchInput.addEventListener("input", (event) => {
+        const searchValue = event.target.value.toLowerCase();
+        const filteredCryptos = allCryptos.filter((crypto) =>
+            crypto.toLowerCase().includes(searchValue)
+        );
+        renderCryptoOptions(filteredCryptos);
+    });
+
+    // Fetch and render cryptocurrencies
+    fetchCryptoPairs();
+
+    // Toggle dropdown visibility
+    cryptoDropdownButton.addEventListener("click", () => {
+        if (!cryptoLocked) {
+            dropdownMenu.style.display =
+                dropdownMenu.style.display === "block" ? "none" : "block";
+        } else {
+            console.warn("Cryptocurrency selection is locked.");
+        }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", (event) => {
+        if (
+            !cryptoDropdownButton.contains(event.target) &&
+            !dropdownMenu.contains(event.target)
+        ) {
+            dropdownMenu.style.display = "none";
+        }
+    });
+});
+
+
+
+
+// Send message to backend with selected cryptocurrency
+async function sendMessageToChat(userSpeech) {
+    console.log(`Sending user input: ${userSpeech}`);
+    console.log(`Using cryptocurrency: ${selectedCrypto}`);
+
+    try {
+        const response = await fetch(API_BASE_URL + "/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                user_id: 'default', 
+                message: userSpeech, 
+                crypto: selectedCrypto // Include the selected cryptocurrency
+            }),
+        });
+        const data = await response.json();
+        console.log("Response from backend:", data);
+    } catch (error) {
+        console.error("Error sending message:", error);
+    }
+}
+
+// // Trigger "Begin Conversation"
+startButton.addEventListener('click', () => {
+    console.log("Starting conversation...");
+    const cryptoDropdownButton = document.getElementById("crypto-dropdown-button");
+
+    // Ensure a cryptocurrency is selected
+    if (!selectedCrypto || selectedCrypto === "Select Cryptocurrency") {
+        console.error("No cryptocurrency selected. Please choose one.");
+        return;
+    }
+
+    // Lock the cryptocurrency selection
+    lockCryptoSelection();
+
+    // Start Continuous Interaction and Backend Communication
+    startContinuousInteraction();
+    console.log(`Selected cryptocurrency: ${selectedCrypto}`);
+    fetch(API_BASE_URL + '/begin_conversation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            user_id: 'default', 
+            message: 'Start conversation', 
+            crypto: selectedCrypto 
+        }),
+    })
+        .then(response => {
+            console.log(`Response received. Status: ${response.status}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log("Conversation started successfully:", data);
+        })
+        .catch(error => {
+            console.error("Error starting conversation:", error);
+        });
+});
+
+const analysisButton = document.getElementById("analysis-button");
+const analysisResponseContainer = document.getElementById("analysis-response-container");
+const analysisResponseDiv = document.getElementById("analysis-response");
+
+analysisButton.addEventListener("click", async () => {
+    console.log("Analysis and Recommendation button clicked.");
+
+    if (!selectedCrypto || selectedCrypto === "Select Cryptocurrency") {
+        console.error("No cryptocurrency selected. Please choose one.");
+        return;
+    }
+
+    try {
+        const response = await fetch(API_BASE_URL + "/chat_recommendation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                user_id: 'default', 
+                message: "Request for analysis and recommendation", 
+                crypto: selectedCrypto
+            }),
+        });
+
+        console.log(`Response received. Status: ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log("Response from analysis and recommendation:", data);
+
+        // Process and format the response
+        const formattedResponse = data.reply
+            .replace(/\*\*|##|--/g, '') // Remove markdown or unnecessary symbols
+            .replace(/(?:\r\n|\r|\n)/g, '<br>'); // Replace line breaks with HTML <br> tags
+
+        // Display the formatted response
+        analysisResponseDiv.innerHTML = formattedResponse; // Use innerHTML to render <br> tags
+        analysisResponseContainer.style.display = "block";
+    } catch (error) {
+        console.error("Error fetching analysis and recommendation:", error);
+        analysisResponseDiv.textContent = "Error: Unable to fetch analysis and recommendation.";
+        analysisResponseContainer.style.display = "block";
+    }
+});
+
+
+
 document.addEventListener('DOMContentLoaded', () => {
     console.log("DOM fully loaded.");
 
@@ -448,17 +701,13 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("End button found:", endButton);
         endButton.addEventListener('click', () => {
             console.log("End button clicked!");
+             // Unlock cryptocurrency selection
+            unlockCryptoSelection();
             stopContinuousInteraction(); // Call the stop function
         });
     } else {
         console.error("End button not found in the DOM.");
     }
 });
-
-
-// endButton.addEventListener('click', stopContinuousInteraction);
-
-
-
 
 
