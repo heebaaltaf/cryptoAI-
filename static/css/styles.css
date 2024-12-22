@@ -93,6 +93,67 @@ footer p {
     font-size: 1rem;
 }
 
+.dropdown {
+    position: relative;
+    display: inline-block;
+    margin-top: 10px;
+}
+
+#crypto-dropdown-button {
+    background-color: hsl(148, 43%, 60%);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    border-radius: 5px;
+}
+.dropdown-search {
+    width: 100%;
+    padding: 10px;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+.dropdown-item {
+    padding: 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.dropdown-item:hover {
+    background-color: #f9f9f9;
+}
+
+#crypto-dropdown-menu {
+    display: none;
+    position: absolute;
+    background-color: white;
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+    z-index: 1;
+    width: 250px; /* Increased width for better search experience */
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+
+
+#crypto-dropdown-menu .dropdown-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #ddd;
+}
+
+#crypto-dropdown-menu .dropdown-item:hover {
+    background-color: hsl(148, 43%, 85%);
+}
+
+.dropdown:hover #crypto-dropdown-menu {
+    display: block;
+}
+
+
 /* Characters Styling */
 #characters-container {
     display: flex;
@@ -112,6 +173,61 @@ footer p {
     border-radius: 10px;
     animation: idle-animation 2s infinite;
 }
+
+/* Align the Analysis and Recommendation button to the right */
+#analysis-button {
+    position: absolute;
+    top: 80px; /* Adjust as needed for spacing */
+    right: 20px; /* Distance from the right edge */
+    background-color: #007bff; /* Button color */
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 20px;
+    font-size: 1rem;
+    cursor: pointer;
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+#analysis-button:hover {
+    background-color: #0056b3; /* Darker shade on hover */
+}
+
+/* Analysis Box Styling */
+.analysis-box {
+    position: absolute; /* Change from fixed to absolute for better alignment */
+    top: 140px; /* Below the button */
+    right: 20px; /* Distance from the right edge */
+    width: 300px; /* Set the desired width */
+    background-color: white;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+    padding: 15px;
+    overflow-y: auto;
+    max-height: 80vh; /* Limit the height with vertical scrolling */
+    display: none; /* Hidden by default */
+}
+
+.analysis-box h3 {
+    margin: 0 0 10px;
+    font-size: 1.5rem;
+    color: #333; /* Updated color for visibility */
+    text-align: center;
+}
+
+#analysis-response {
+    font-size: 1rem;
+    color: #555;
+    line-height: 1.5;
+    white-space: pre-line; /* Retain line breaks */
+}
+
+.analysis-box.error {
+    color: red;
+    font-weight: bold;
+}
+
 
 /* Animations */
 @keyframes bounce {
