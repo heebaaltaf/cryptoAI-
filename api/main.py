@@ -5,8 +5,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+import time
 import requests
 import pandas as pd
+from threading import Thread, Lock, Event
 
 from datetime import datetime
 from ta.momentum import (
@@ -21,6 +23,9 @@ from ta.volatility import BollingerBands, AverageTrueRange, KeltnerChannel
 from ta.volume import OnBalanceVolumeIndicator, ChaikinMoneyFlowIndicator
 
 import numpy as np
+import logging
+
+
 
 # import spacy
 import os
@@ -29,7 +34,9 @@ import re
 from dotenv import load_dotenv
 import boto3
 from openai import OpenAI
-
+from pydantic import BaseModel
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Check if config.env exists (for local testing)
 if os.path.exists("config.env"):
@@ -72,7 +79,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+allow_origins=["http://127.0.0.1:8000", "https://crypto-ai-pi.vercel.app"]
 # # Initialize AWS Polly client
 # session = boto3.Session(profile_name="default")  # Replace with your AWS profile
 # sts_client = session.client("sts")
@@ -104,10 +111,7 @@ polly_client = boto3.client(
 # Session management
 sessions = {}
 
-# Models
-class ChatRequest(BaseModel):
-    user_id: str = "default"
-    message: str
+
 
 
 import requests
@@ -271,6 +275,94 @@ def calculate_mfi(df, window=14):
     
     return mfi
 
+# Global control for fetch thread
+fetch_running = Event()
+fetch_thread = None
+all_data = pd.DataFrame()
+
+def fetch_data_continuously(symbol, delay_between_fetches):
+    """Continuously fetch data while the flag is set."""
+    global all_data
+    output_file = "temp.csv"
+
+    while fetch_running.is_set():  # Check if the fetch_running flag is set
+        try:
+            # Fetch new data
+            order_book = client.get_order_book(symbol=symbol)
+            order_book_timestamp = pd.Timestamp.now(tz='UTC').floor("s").tz_localize(None)
+            bid_price = float(order_book['bids'][0][0])
+            bid_qty = float(order_book['bids'][0][1])
+            ask_price = float(order_book['asks'][0][0])
+            ask_qty = float(order_book['asks'][0][1])
+
+            # Create DataFrame for new data
+            orderbook_df = pd.DataFrame([{
+                'timestamp': order_book_timestamp,
+                'bid_price': bid_price,
+                'bid_qty': bid_qty,
+                'ask_price': ask_price,
+                'ask_qty': ask_qty
+            }])
+
+            # Append new data to all_data
+            if all_data.empty:
+                all_data = orderbook_df
+            else:
+                all_data = pd.concat([all_data, orderbook_df], ignore_index=True)
+
+            # Save to CSV
+            if not os.path.isfile(output_file):
+                all_data.to_csv(output_file, index=False)
+            else:
+                orderbook_df.to_csv(output_file, mode="a", header=False, index=False)
+
+            time.sleep(delay_between_fetches)  # Wait before fetching again
+        except Exception as e:
+            print(f"Error in fetch_data_continuously: {e}")
+            break
+
+class ChatRequest(BaseModel):
+    user_id: str
+    message: str
+    crypto: str  # Add the crypto field
+
+
+@app.post("/begin_conversation")
+async def begin_conversation(request: ChatRequest):
+    """Start the conversation and fetch process."""
+    logger.info(f"Received request: {request}")
+    global fetch_thread
+
+    # Parse the cryptocurrency from the request
+    selected_crypto = request.crypto
+    print(f"Received request to begin conversation with crypto: {selected_crypto}")
+
+    # Start fetching data for the selected cryptocurrency
+    if not fetch_running.is_set():
+        fetch_running.set()  # Set the flag
+        fetch_thread = Thread(target=fetch_data_continuously, args=(selected_crypto, 1), daemon=True)
+        fetch_thread.start()
+        print(f"Started fetch thread for {selected_crypto}.")
+    else:
+        print("Fetch thread is already running.")
+
+    return {"message": f"Conversation started and data fetching initiated for {selected_crypto}."}
+
+@app.post("/end_conversation")
+async def end_conversation(user_id: str = "default"):
+    """End the conversation and stop fetch process."""
+    global fetch_thread
+
+    # Stop fetching data
+    if fetch_running.is_set():
+        fetch_running.clear()  # Clear the flag
+        fetch_thread.join()  # Wait for the thread to finish
+        print("Fetch thread stopped.")
+
+    # Reset session
+    if user_id in sessions:
+        sessions.pop(user_id)
+    return {"message": "Conversation ended and data fetching stopped."}
 
 
 
@@ -391,12 +483,13 @@ SEARCH_ENGINE_ID = os.getenv("google_engine_id")
 
 #print("Historical data fetched and saved successfully.")
 
+
 @app.post("/chat")
 async def chat(request: ChatRequest):
     """Handle chat conversation."""
     user_id = request.user_id
     user_input = request.message.strip()
-
+    selected_crypto = request.crypto  # Get the selected cryptocurrency
 
 
     if not user_input and not sessions.get(user_id):
@@ -404,7 +497,7 @@ async def chat(request: ChatRequest):
         sessions[user_id] = {"conversation_history": [{"role": "assistant", "content": introduction}]}
         return {"reply": introduction}
     
-    historical_data = get_historical_data_extended("BTCUSDT", "30m", start_date_str, end_date)
+    historical_data = get_historical_data_extended(selected_crypto, "30m", start_date_str, end_date)
     print(historical_data.shape)
     historical_data_with_indicators = add_technical_indicators(historical_data)
     historical_data_with_indicators = add_volatility_features(historical_data_with_indicators)
@@ -415,6 +508,10 @@ async def chat(request: ChatRequest):
 
     print(historical_data[:10])
 
+    ask_bid_data = pd.read_csv("temp.csv")
+    print(ask_bid_data.shape)
+    ask_bid_data = (ask_bid_data[-1000:]).to_string()
+    print(ask_bid_data[:10])
     session = sessions.setdefault(user_id, {"conversation_history": []})
     if user_input:
         session["conversation_history"].append({"role": "user", "content": user_input})
@@ -452,7 +549,7 @@ async def chat(request: ChatRequest):
 
     print(f"Search summary: {search_summary}")    
     try:
-#      
+     
         system_message = f"""You are a highly knowledgeable and analytical AI expert  named Crypto AI specializing in cryptocurrency markets and blockchain technology. Your role is to provide accurate, insightful, and clear explanations, analysis, and recommendations. You ll also be given latest last 1 days bitcoin price data and which you can use for analysis. You must keep the following guidelines in mind while interacting:
 
 1. **Clarity and Accuracy**:
@@ -482,16 +579,17 @@ async def chat(request: ChatRequest):
 
 7. **Scams and Security**:
    - Educate users about common scams, security best practices, and the importance of private key management.
-
-
-Here is the latest last 1 day bitcoin price data 5min interval
+Here is the latest last 1-day price data (5-minute interval):
 {historical_data}
 
- look at the open and close prioces, high and low prices and time and do analysis and identify trends etc.
+Here is the order book data:
+{ask_bid_data}
 
-here is the google summary of your query: {search_summary} 
-Maintain a professional, approachable, and patient tone throughout. Your goal is to empower users with knowledge and help them navigate the world of cryptocurrency and blockchain effectively.
-"""
+Here is the Google summary of your query:
+{search_summary}"""
+        
+
+
 
 
         messages = [{"role": "system", "content": system_message}] + session["conversation_history"]
@@ -511,18 +609,203 @@ Maintain a professional, approachable, and patient tone throughout. Your goal is
         raise HTTPException(status_code=500, detail="Something went wrong.")
 
 
+@app.post("/chat_recommendation")
+async def chat_recommendation(request: ChatRequest):
+    """Handle chat conversation."""
+    user_id = request.user_id
+    user_input = request.message.strip()
+    selected_crypto = request.crypto  # Get the selected cryptocurrency
+
+
+  
+    
+    historical_data = get_historical_data_extended(selected_crypto, "30m", start_date_str, end_date)
+    print(historical_data.shape)
+    historical_data_with_indicators = add_technical_indicators(historical_data)
+    historical_data_with_indicators = add_volatility_features(historical_data_with_indicators)
+    print(historical_data.shape)
+    # Save to CSV
+    # historical_data_with_indicators.to_csv("btc_usdt_extended_data.csv", index=False)
+    historical_data= historical_data_with_indicators.to_string()
+
+    print(historical_data[:10])
+
+    ask_bid_data = pd.read_csv("temp.csv")
+    print(ask_bid_data.shape)
+    ask_bid_data = (ask_bid_data[-1000:]).to_string()
+    print(ask_bid_data[:10])
+    session = sessions.setdefault(user_id, {"conversation_history": []})
+    # if user_input:
+    #     session["conversation_history"].append({"role": "user", "content": user_input})
+    # Your Google Custom Search API details
+    
+
+    # User input
+    
+
+    # Process input with NLP
+    # doc = nlp(user_input)
+    # query = " ".join([token.text for token in doc if not token.is_stop and not token.is_punct])
+    query  = f"latest sentiment data on {selected_crypto} from the social networks along with the latest news "
+
+    print(f"Extracted query: '{query}'")
+
+   
+
+    # Perform Google Search
+    url = "https://www.googleapis.com/customsearch/v1"
+    params = {
+        "key": API_KEY,
+        "cx": SEARCH_ENGINE_ID,
+        "q": query,
+    }
+
+    response = requests.get(url, params=params)
+
+    if response.status_code == 200:
+        results = response.json()
+        snippets = [item["snippet"] for item in results.get("items", [])[:3]]
+        search_summary = "\n".join(snippets)
+    else:
+        search_summary = "No results found."
+
+    print(f"Search summary: {search_summary}")    
+    try:
+        system_message = f"""
+You are a highly skilled AI Day Trading and Futures Analyst specializing in synthesizing various trading strategies to provide actionable insights for day traders and futures traders. Your expertise includes predicting short-term price movements, identifying entry and exit points, and assessing futures trading opportunities based on market data, technical indicators, sentiment analysis, and historical trends.
+
+Your role is to integrate day trading strategies such as momentum trading, range trading, scalping, and breakout trading while also analyzing futures contracts to identify the best opportunities at a specific timestamp.
+
+AI Day Trading and Futures Instructions:
+Input Data Analysis:
+
+Analyze the provided data, including:
+Historical price data.
+Order book depth and bid/ask volumes.
+Technical indicators such as RSI, MACD, Bollinger Bands, and VWAP.
+Sentiment trends based on news and social media.
+Futures market data, including open interest, implied volatility, and contract expiration dates.
+Day Trading Strategies Integration:
+
+Combine key day trading strategies:
+Momentum Trading: Identify trends using indicators like RSI, MACD, and ROC.
+Range Trading: Highlight support and resistance levels for range-bound assets.
+Scalping: Detect quick opportunities for small profits.
+Breakout Trading: Identify assets breaking past support or resistance levels.
+Reversal and Pullback Trading: Assess opportunities for reversals or temporary retracements.
+Futures Trading Analysis:
+
+Analyze futures data for the selected asset:
+Identify the most liquid and actively traded contracts.
+Use open interest and volume to gauge market sentiment and interest.
+Evaluate implied volatility to predict price swings.
+Assess contango/backwardation for price expectations.
+Select the best futures contract at the specific timestamp for actionable predictions.
+Prediction and Recommendations:
+
+Combine insights from day trading strategies and futures analysis.
+Provide predictions for:
+Spot price movements based on historical and real-time data.
+Futures contract movements for near-term opportunities.
+Highlight the best trading strategy (day trading or futures) for the specific timestamp and explain why.
+Output Format:
+
+Present the analysis and predictions clearly and concisely.
+Ensure predictions reference the timestamp in human-readable language and the source of information.
+Avoid discussing internal analysis steps; focus solely on actionable insights.
+Here is the latest last 1-day price data (5-minute interval):
+{historical_data}
+
+Here is the order book data:
+{ask_bid_data}
+
+Here is the Google summary of your query:
+{search_summary}
+        
+
+
+
+Example Output:use only format not the content
+Data Summary for { selected_crypto}:
+
+Timestamp: December 21, 2024, 12:30 PM EST.
+Source: Aggregated from [data sources, e.g., QuantifiedStrategies.com, Google News, futures data provider].
+Analysis Period: Last 24 hours.
+Day Trading Analysis:
+
+Synthesis: "The analysis of Bitcoin over the past 24 hours shows a bullish trend, with strong support at $51,200 and resistance at $53,500. Volatility is high, with Bollinger Bands widening, and sentiment analysis indicates optimism fueled by positive institutional activity."
+Prediction: "Bitcoin is likely to test the resistance at $53,500 within the next 4 hours. A breakout may lead to a price surge toward $55,000."
+Day Trading Recommendations:
+Entry Point: Buy near $51,200.
+Exit Point: Sell near $53,500.
+Stop-Loss: Place at $50,800.
+Futures Trading Analysis:
+
+Selected Contract: Bitcoin Futures (BTC-USD-DEC24).
+Synthesis: "The futures market shows high open interest and implied volatility for the December contract. The futures price is trading at a slight premium to the spot price, indicating bullish sentiment."
+Prediction: "The December contract is expected to rise to $54,800, aligning with bullish sentiment in the spot market. A breakout in spot price above $53,500 may further boost the futures price."
+
+
+Futures Trading Recommendations:
+Entry Point: Long position at $53,000.
+Exit Point: Close position at $54,800.
+Stop-Loss: Place at $52,500.
+Best Trading Opportunity (Timestamp-Based Decision):
+
+"At this timestamp, the futures contract offers a better risk-reward ratio due to high open interest and clear bullish sentiment. Traders should consider entering a long position in Bitcoin Futures (BTC-USD-DEC24) at $53,000 for a potential upside to $54,800."
+Risks and Uncertainties:
+
+"Potential risks include unexpected regulatory news or a sharp decline in liquidity during midday trading hours. Monitor market sentiment closely for any changes."
+Next Steps:
+
+"Track price movements at $51,200 (spot support) and $53,500 (spot resistance) for early signals."
+"Watch the futures market for sudden shifts in open interest or implied volatility."
+
+"""
+
+
+
+
+
+        messages = [{"role": "system", "content": system_message}] # + session["conversation_history"]
+
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini-2024-07-18",
+            messages=messages,
+            temperature=0.8,
+            max_tokens=300,
+        )
+
+        reply = response.choices[0].message.content.strip()
+        # session["conversation_history"].append({"role": "assistant", "content": reply})
+        return {"reply": reply}
+    except Exception as e:
+        print(f"OpenAI API error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Something went wrong.")
+
+
+
+
 # @app.post("/reset")
-# def reset(user_id: str = "default"):
-#     """Reset conversation history."""
-#     sessions.pop(user_id, None)
-#     return {"message": "Conversation history reset."}
-
-
+# async def reset(user_id: str = "default"):
+#     """Reset conversation history for the given user ID."""
+#     if user_id in sessions:
+#         sessions.pop(user_id)  # Clear session data
+#         return {"message": "Conversation history reset."}
+#     return {"message": "No active session found to reset."}
 
 @app.post("/reset")
 async def reset(user_id: str = "default"):
-    """Reset conversation history for the given user ID."""
+    """Reset conversation history and stop fetching."""
+    global fetch_running
+
+    # Clear session data
     if user_id in sessions:
-        sessions.pop(user_id)  # Clear session data
-        return {"message": "Conversation history reset."}
-    return {"message": "No active session found to reset."}
+        sessions.pop(user_id)
+
+    # Stop the fetch thread
+    if fetch_running.is_set():
+        fetch_running.clear()  # Clear the flag to stop fetching
+        print("Fetch thread stopped.")
+
+    return {"message": "Conversation and data fetching stopped successfully."}
